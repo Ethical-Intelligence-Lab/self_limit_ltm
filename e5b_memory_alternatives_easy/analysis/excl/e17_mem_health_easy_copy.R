@@ -1,0 +1,543 @@
+#Julian De Freitas, 2019
+#Analysis script for De Freitas, Rips, & Alvarez - The capacity of personal identity
+#Experiment 17
+
+## clear workspace
+rm(list = ls()) 
+
+options(download.file.method="libcurl")
+
+## necessary libraries
+if (!require(rjson)) {install.packages("rjson"); require(rjson)} 
+if (!require(ggplot2)) {install.packages("ggplot2"); require(ggplot2)}
+if (!require(ltm)) {install.packages("ltm"); require(ltm)} 
+if (!require(heplots)) {install.packages("heplots"); require(heplots)} 
+if (!require(lmtest)) {install.packages("lmtest"); require(lmtest)} 
+if (!require(compute.es)) {install.packages("compute.es"); require(compute.es)}
+if (!require(jsonlite)) {install.packages("jsonlite"); require(jsonlite)}
+if (!require(plyr)) {install.packages("plyr"); require(plyr)}
+if (!require(lme4)) {install.packages("lme4"); require(lme4)}
+if (!require(reshape2)) {install.packages("reshape2"); require(reshape2)}
+if (!require(RColorBrewer)) {install.packages("RColorBrewer"); require(RColorBrewer)}
+if (!require(Hmisc)) {install.packages("Hmisc"); require(Hmisc)}
+if (!require(gridExtra)) {install.packages("gridExtra"); require(gridExtra)}
+if (!require(devtools)) {install.packages("devtools"); require(devtools)}
+if (!require(ggpubr)) {install.packages("ggpubr"); require(ggpubr)}
+if (!require(ggsignif)) {install.packages("ggsignif"); require(ggsignif)}
+
+##================================================================================================================
+                                              ##IMPORT DATA##
+##================================================================================================================
+
+## set directory to data folder
+dir <- setwd("/Users/julian/Dropbox (Personal)/Research/Intuition/single_identity/e17_memory_alternatives_easy/data")
+
+datalist = list()
+#import data using jsonlite [automate this, by defining list of data frames]
+files <- list.files(pattern=('*txt'))
+for (i in 1:length(files)) {
+    curData <- fromJSON(files[i], simplifyDataFrame = TRUE)
+    datalist[[i]] <- curData$trialStruct
+}
+
+data = do.call(rbind, datalist)
+head(data)
+dim(data)
+length(unique(data$workerId)) #198 subjects
+
+#check that we have equal numbers for each condition
+table(data$label)
+table(data$agentCond)
+table(data$selfCond)
+
+##================================================================================================================
+                                                ##EXCLUSIONS##
+##================================================================================================================
+
+### perform exclusions: attention, comprehension, and rts < 100 (this ends up performing both subject and trial)
+### note, we exclude based on mean accuracy further below
+### note, data$comp_mental_content actually refers to comp_number_copies
+
+## (1) attention and comprehension
+data <- subset(data,(data$attentionMCQ=="0" & data$comp=="B")) 
+length(unique(data$workerId)) #1 subjects
+
+for (i in 1:dim(data)[1]) {
+  if(data$selfCond[i] == 1) {
+    if(data$comp2[i] == "B") {
+      data$exclude[i] = 0
+    }
+    else {
+      data$exclude[i] = 1
+    }
+  }
+  else if(data$selfCond[i] == 2) {
+    if(data$comp2[i] == "C") {
+      data$exclude[i] = 0
+    }
+    else {
+      data$exclude[i] = 1
+    }
+  }
+}
+
+data <- subset(data, data$exclude == 0)
+length(unique(data$workerId)) #1 subjects
+
+data$rt[is.na(data$rt)] <- 0
+
+## (2) < 55 accuracy or RTs < 100ms
+#mark which trials had reasonable rts
+for(i in 1:dim(data)[1]) {
+  if(data$rt[i] >= 100) {
+    data$badRt[i] = 0
+  }
+  else {
+    data$badRt[i] = 1
+  }
+}
+
+worker <- as.factor(data$workerId)
+workers <- as.factor(unique(worker))
+acc <- as.numeric(data$acc)
+acc_use <- acc
+acc_use[is.na(acc_use)] <- 0
+perf_thresh <- 0.40
+cond <- as.factor(data$selfCond)
+trial_thresh <- 0.5
+
+ss_excl_mat <- array(0,dim=c(length(workers),2))
+colnames(ss_excl_mat) <- c('mean_acc', 'rt_err_prop')
+
+#if their accuracy < 55% or total bad RTs > 50% of trials, exclude them from dataset
+for(i in 1:length(workers)) {
+  ss_excl_mat[i,1] <- c(mean(acc_use[worker==workers[i]])) #get accuracy for each worker
+  ss_excl_mat[i,2] <- sum(data$badRt[data$workerId == workers[i]])/length(data$rt[data$workerId == workers[i]])
+  if( (ss_excl_mat[i,1] < perf_thresh) | (ss_excl_mat[i,2] > trial_thresh) ) {
+    data <- subset(data,data$workerId != workers[i]) 
+  }
+}
+ss_excl_mat
+
+#check it worked
+worker <- as.factor(data$workerId)
+workers <- as.factor(unique(worker))
+acc <- as.numeric(data$acc)
+acc_use <- acc
+acc_use[is.na(acc_use)] <- 0
+
+ss_excl_mat <- array(0,dim=c(length(workers),2))
+colnames(ss_excl_mat) <- c('mean_acc', 'rt_err_prop')
+
+for(i in 1:length(workers)) {
+  ss_excl_mat[i,1] <- c(mean(acc_use[worker==workers[i]])) #get accuracy for each worker
+  ss_excl_mat[i,2] <- sum(data$badRt[data$workerId == workers[i]])/length(data$rt[data$workerId == workers[i]])
+}
+ss_excl_mat
+
+length(unique(data$workerId)) #124 subjects
+dim(data)
+
+##================================================================================================================
+                                        ##PREP DATA FOR ANALYSIS##
+##================================================================================================================
+
+### get identity ratings for each subject
+worker <- as.factor(data$workerId)
+workers <- as.factor(unique(worker))
+identity_bef <- data$identity_fetus
+identity_aft <- data$identity_pvs
+iden_mat <- array(0,dim=c(length(workers),5))
+colnames(iden_mat) <- c('before', 'after','zeros','ltm_diff', 'total_perf')
+for(i in 1:length(workers)) {
+  iden_mat[i,] <- c( mean(identity_bef[worker==workers[i]]), mean(identity_aft[worker==workers[i]]),0, 0, 0)
+}
+iden.mat <- as.data.frame(iden_mat, stringsAsFactors=FALSE); iden.mat
+
+#assign variable names
+acc <- as.numeric(data$acc)
+acc_use <- acc
+acc_use[is.na(acc_use)] <- 0
+numTrials <- dim(data)[1]
+matchCond <- as.factor(data$matchCond)
+agentCond <- as.factor(data$agentCond)
+condNum <- as.factor(data$selfCond)
+#create numeric version of condition
+for(i in 1:length(agentCond)) {
+  if(condNum[i] == 1) {
+    if(agentCond[i] == 'healthy-you') {
+      data$agentCond_n[i] = 1
+    }
+    else if(agentCond[i] == 'stranger-john') {
+      data$agentCond_n[i] = 2
+    }
+    else if(agentCond[i] == 'stranger-bill') {
+      data$agentCond_n[i] = 3
+    }
+  }
+  else if(condNum[i] == 2) {
+    if(agentCond[i] == 'healthy-you') {
+      data$agentCond_n[i] = 1
+    }
+    else if(agentCond[i] == 'unhealthy-you') {
+      data$agentCond_n[i] = 2
+    }
+    else if(agentCond[i] == 'stranger-john') {
+      data$agentCond_n[i] = 3
+    }
+  }
+}
+agentCond_n <- as.factor(data$agentCond_n)
+ans <- as.factor(data$ans)
+corrAns <- as.factor(data$corrAns)
+rts <- log(as.numeric(data$rt))
+agentConds_n <- as.factor(unique(agentCond_n))
+age <- as.numeric(data$age); mean(age,na.rm = TRUE) #32.10
+gender <- as.factor(data$sex); table(gender)[1]/sum(table(gender)) #0.51
+
+#create matrix for collecting d prime-relevant values, and rts
+d_mat <- array(0,dim=c(3*length(workers), 5))
+colnames(d_mat) <- c('worker', 'mainCond', 'agentCond', 'acc', 'rt')
+d.mat <- as.data.frame(d_mat, stringsAsFactors=FALSE); d.mat
+
+counter <- 1
+for(i in 1:length(workers)) {
+  for(j in 1:length(agentConds_n)) {
+    mean_acc <- mean(acc_use[worker==workers[i] & agentCond_n==j])
+    rt <- mean(rts[worker==workers[i] & agentCond_n==j], na.rm=TRUE)
+    
+    d.mat[counter,] <- c(workers[i], unique(condNum[worker==workers[i]]), j, mean_acc, rt)
+    counter = counter + 1
+  }
+} 
+
+# collect total performance and performance difference (cond 1 - 2) for each subject
+perf_mat <- array(0, dim=c(length(workers), 3))
+colnames(perf_mat) <- c('mainCond', 'perf_diff', 'total_perf')
+perf.mat <- as.data.frame(perf_mat, stringsAsFactors=FALSE); perf.mat
+
+for(i in 1:length(workers)) {
+  perf.mat[i,1] <- unique(d.mat$mainCond[d.mat$worker==i])
+  if(unique(d.mat$mainCond[d.mat$worker==i]) == 1) {
+    #performance for original you - performance for stranger John
+    perf.mat[i,2] <- d.mat$acc[d.mat$worker==i & d.mat$agentCond == 1] - d.mat$acc[d.mat$worker==i & d.mat$agentCond == 2] 
+  }
+  else if(unique(d.mat$mainCond[d.mat$worker==i]) == 2) {
+    #best of performance for original or copy - performance for stranger John
+    perf.mat[i,2] <- max(d.mat$acc[d.mat$worker==i & d.mat$agentCond == 1], d.mat$acc[d.mat$worker==i & d.mat$agentCond == 2]) - d.mat$acc[d.mat$worker==i & d.mat$agentCond == 3] 
+  }
+  perf.mat[i,3] <- d.mat$acc[d.mat$worker==i & d.mat$agentCond == 1] + d.mat$acc[d.mat$worker==i & d.mat$agentCond == 2] + d.mat$acc[d.mat$worker==i & d.mat$agentCond == 3]
+}
+
+#mat of liking ratings
+data2 <- data[order(data$cat),] 
+image_cat <- as.factor(data2$cat)
+pref <- as.factor(data2$preference)
+pref_n <- as.numeric(pref)
+worker <- as.factor(data2$workerId)
+workers <- as.factor(unique(worker))
+condNum <- as.factor(data2$selfCond)
+
+pref_mat <- array(0,dim=c(length(workers), 3))
+colnames(pref_mat) <- c('worker', 'mainCond', 'pref')
+pref.mat <- as.data.frame(pref_mat, stringsAsFactors=FALSE); pref.mat
+
+for(i in 1:length(workers)) {
+  corr <- cor.test(pref_n[worker==workers[i] & data2$agentCond_n==1], pref_n[worker==workers[i] & data2$agentCond_n==2])
+  pref.mat[i,] <- c(workers[i], unique(condNum[worker==workers[i]]), as.numeric(corr[4]))
+}
+pref.mat[is.na(pref.mat)] <- 0
+
+##================================================================================================================
+                                                      ##ANALYSIS##
+##================================================================================================================
+
+#---- HOW CORRELATED ARE LIKING RATINGS FOR SELF AND COPY 
+pref_easy <- pref.mat$pref[pref.mat$mainCond == 2]
+t.test(pref_easy, var.equal=TRUE, paired=FALSE)
+mean(pref_easy) #should be less correlated than in hard version
+sd(pref_easy)
+
+#compare pref_easy to pref_hard, from e16
+pref_t <- t.test(pref_easy, pref_hard, var.equal=TRUE, paired=FALSE); pref_t
+tes(as.numeric(pref_t[1]), length(pref_easy), length(pref_hard)) #cohen's d
+
+#------- GROUP MEANS--------#
+
+#one self 
+d_one <- subset(d.mat, d.mat$mainCond==1)
+
+mean(d_one$acc[d_one$agentCond==1]) #future-you1
+sd(d_one$acc[d_one$agentCond==1])
+
+mean(d_one$acc[d_one$agentCond==2]) #stranger-john
+sd(d_one$acc[d_one$agentCond==2])
+
+mean(d_one$acc[d_one$agentCond==3]) #stranger-bill
+sd(d_one$acc[d_one$agentCond==3])
+
+att_1 <- t.test(d_one$acc[d_one$agentCond==1 | d_one$agentCond==2] ~ d_one$agentCond[d_one$agentCond==1 | d_one$agentCond==2], var.equal=TRUE, paired=TRUE); att_1
+att_2 <- t.test(d_one$acc[d_one$agentCond==1 | d_one$agentCond==3] ~ d_one$agentCond[d_one$agentCond==1 | d_one$agentCond==3], var.equal=TRUE, paired=TRUE); att_2
+att_3 <- t.test(d_one$acc[d_one$agentCond==2 | d_one$agentCond==3] ~ d_one$agentCond[d_one$agentCond==2 | d_one$agentCond==3], var.equal=TRUE, paired=TRUE); att_3
+
+tes(as.numeric(att_1[1]), length(workers), length(workers)) #cohen's d
+tes(as.numeric(att_2[1]), length(workers), length(workers)) #cohen's d
+tes(as.numeric(att_3[1]), length(workers), length(workers)) #cohen's d
+
+#two selves
+d_two <- subset(d.mat, d.mat$mainCond==2)
+
+mean(d_two$acc[d_two$agentCond==1]) #future-you1
+sd(d_two$acc[d_two$agentCond==1])
+
+mean(d_two$acc[d_two$agentCond==2]) #future-you2
+sd(d_two$acc[d_two$agentCond==2])
+
+mean(d_two$acc[d_two$agentCond==3]) #stranger-bill
+sd(d_two$acc[d_two$agentCond==3])
+
+att_1 <- t.test(d_two$acc[d_two$agentCond==1 | d_two$agentCond==2] ~ d_two$agentCond[d_two$agentCond==1 | d_two$agentCond==2], var.equal=TRUE, paired=TRUE); att_1
+att_2 <- t.test(d_two$acc[d_two$agentCond==1 | d_two$agentCond==3] ~ d_two$agentCond[d_two$agentCond==1 | d_two$agentCond==3], var.equal=TRUE, paired=TRUE); att_2
+att_3 <- t.test(d_two$acc[d_two$agentCond==2 | d_two$agentCond==3] ~ d_two$agentCond[d_two$agentCond==2 | d_two$agentCond==3], var.equal=TRUE, paired=TRUE); att_3
+
+tes(as.numeric(att_1[1]), length(workers), length(workers)) #cohen's d
+tes(as.numeric(att_2[1]), length(workers), length(workers)) #cohen's d
+tes(as.numeric(att_3[1]), length(workers), length(workers)) #cohen's d
+
+#------- TOTAL PERFORMANCE--------#
+
+mean(perf.mat$total_perf[perf.mat$mainCond == 1])
+sd(perf.mat$total_perf[perf.mat$mainCond == 1])
+length_1 <- length(perf.mat$total_perf[perf.mat$mainCond == 1])
+
+mean(perf.mat$total_perf[perf.mat$mainCond == 2])
+sd(perf.mat$total_perf[perf.mat$mainCond == 2])
+length_2 <- length(perf.mat$total_perf[perf.mat$mainCond == 2])
+
+perf_1 <- t.test(perf.mat$total_perf ~ perf.mat$mainCond, var.equal=TRUE, paired=FALSE); perf_1
+tes(as.numeric(perf_1[1]), length_1, length_2) #cohen's d
+
+#-------PERFORMANCE DIFF ---------#
+
+mean(perf.mat$perf_diff[perf.mat$mainCond == 1])
+sd(perf.mat$perf_diff[perf.mat$mainCond == 1])
+
+mean(perf.mat$perf_diff[perf.mat$mainCond == 2])
+sd(perf.mat$perf_diff[perf.mat$mainCond == 2])
+
+perf_2 <- t.test(perf.mat$perf_diff ~ perf.mat$mainCond, var.equal=TRUE, paired=FALSE); perf_2
+tes(as.numeric(perf_2[1]), length(workers), length(workers)) #cohen's d
+
+##================================================================================================================
+                                                ##PREPARE DATA FOR PLOTTING##
+##================================================================================================================
+
+#make d mat for plotting: condition 1
+d_mat_plot_one <- array(0,dim=c(3, 5))
+colnames(d_mat_plot_one) <- c('cond','mean','sd','n','sem')
+perf_mat_plot_one <- as.data.frame(d_mat_plot_one, stringsAsFactors=FALSE); d_mat_plot_one
+
+for(i in 1:length(unique(agentCond_n))) {
+  d_mat_plot_one[i, ] <- c(i, mean(d_one$acc[d_one$agentCond == i]), sd(d_one$acc[d_one$agentCond == i]), length(d_one$acc[d_one$agentCond == i]), 0)
+  d_mat_plot_one[i, 5] <- d_mat_plot_one[i,3]/sqrt(d_mat_plot_one[i,4])
+}
+d_mat_plot_one
+d.one <- as.data.frame(d_mat_plot_one, stringsAsFactors=FALSE); d.one
+
+#make d mat for plotting: condition 2
+d_mat_plot_two <- array(0,dim=c(3, 5))
+colnames(d_mat_plot_two) <- c('cond','mean','sd','n','sem')
+perf_mat_plot_two <- as.data.frame(d_mat_plot_two, stringsAsFactors=FALSE); d_mat_plot_two
+
+for(i in 1:length(unique(agentCond_n))) {
+  d_mat_plot_two[i, ] <- c(i, mean(d_two$acc[d_two$agentCond == i]), sd(d_two$acc[d_two$agentCond == i]), length(d_two$acc[d_two$agentCond == i]), 0)
+  d_mat_plot_two[i, 5] <- d_mat_plot_two[i,3]/sqrt(d_mat_plot_two[i,4])
+}
+d_mat_plot_two
+d.two <- as.data.frame(d_mat_plot_two, stringsAsFactors=FALSE); d.two
+
+# make total performance mat for plotting
+perf_mat_total <- array(0,dim=c(2, 5))
+colnames(perf_mat_total) <- c('cond','mean','sd','n','sem')
+perf_mat_total <- as.data.frame(perf_mat_total, stringsAsFactors=FALSE); perf_mat_total
+
+for(i in 1:2) {
+  perf_mat_total[i, ] <- c(i, mean(perf.mat$total_perf[perf.mat$mainCond == i]), sd(perf.mat$total_perf[perf.mat$mainCond == i]), length(perf.mat$total_perf[perf.mat$mainCond == i]), 0)
+  perf_mat_total[i,5] <- perf_mat_total[i,3]/sqrt(perf_mat_total[i,4])
+}
+perf_mat_total
+
+# make performance diff mat for plotting
+perf_mat_diff <- array(0,dim=c(2, 5))
+colnames(perf_mat_diff) <- c('cond','mean','sd','n','sem')
+perf_mat_diff <- as.data.frame(perf_mat_diff, stringsAsFactors=FALSE); perf_mat_diff
+
+for(i in 1:2) {
+  perf_mat_diff[i, ] <- c(i, mean(perf.mat$perf_diff[perf.mat$mainCond == i]), sd(perf.mat$perf_diff[perf.mat$mainCond == i]), length(perf.mat$perf_diff[perf.mat$mainCond == i]), 0)
+  perf_mat_diff[i,5] <- perf_mat_diff[i,3]/sqrt(perf_mat_diff[i,4])
+}
+perf_mat_diff
+
+# make ordered performance mat for plotting
+perf_one <- subset(perf.mat,perf.mat$mainCond==1)
+perf_one_diff_ordered <- perf_one[order(-perf_one$perf_diff),]
+perf_one_diff_ordered$counter <- c(1:dim(perf_one)[1])
+perf_one_total_ordered <- perf_one[order(-perf_one$total_perf),]
+perf_one_total_ordered$counter <- c(1:dim(perf_one)[1])
+
+perf_two <- subset(perf.mat,perf.mat$mainCond==2)
+perf_two_diff_ordered <- perf_two[order(-perf_two$perf_diff),]
+perf_two_diff_ordered$counter <- c(1:dim(perf_two)[1])
+perf_two_total_ordered <- perf_two[order(-perf_two$total_perf),]
+perf_two_total_ordered$counter <- c(1:dim(perf_two)[1])
+
+##================================================================================================================
+                                                ##PLOT DATA##
+##================================================================================================================
+
+condNames_one <- c('Future-you1', 'Stranger-John', 'Stranger-Bill')
+condNames_two <- c('Future-you1', 'Future-you2', 'Stranger-John')
+
+################# GROUP PLOTS #########################################
+
+#one self
+title <- c('Performance for One Self') 
+p1<-ggplot(d.one,aes(x=factor(cond),y=mean,fill=factor(cond))) +  
+  stat_summary(fun.y=mean,position=position_dodge(),geom="bar")+theme_bw()+coord_cartesian(ylim=c(0, 1)) 
+p1+geom_errorbar(aes(ymax=mean+sem, ymin=mean-sem), position="dodge")+ggtitle(title)+
+  scale_x_discrete(breaks = 1:length(condNames_one), labels=condNames_one)+
+  theme(panel.grid.major = element_blank(),legend.position="none", panel.grid.minor = element_blank(), axis.title.y=element_blank())+
+  theme(text = element_text(size=20), axis.text.x = element_text(angle = 45, hjust=1))+
+  xlab("Number of Selves")+ylab("Mean")
+
+#two selves
+title <- c('Performance for two selves') 
+p2<-ggplot(d.two,aes(x=factor(cond),y=mean,fill=factor(cond))) +  
+  stat_summary(fun.y=mean,position=position_dodge(),geom="bar")+theme_bw()+coord_cartesian(ylim=c(0, 1)) 
+p2+geom_errorbar(aes(ymax=mean+sem, ymin=mean-sem), position="dodge")+ggtitle(title)+
+  scale_x_discrete(breaks = 1:length(condNames_two), labels=condNames_two)+
+  theme(panel.grid.major = element_blank(),legend.position="none", panel.grid.minor = element_blank(), axis.title.y=element_blank())+
+  theme(text = element_text(size=20), axis.text.x = element_text(angle = 45, hjust=1))+
+  xlab("Agent Condition")+ylab("Mean")
+
+grid.arrange(p1, p2)
+
+################# PERFORMANCE PLOTS #########################################
+
+perf_conds <- c('One', 'Two')
+
+#overall performance across agent conditions
+title <- c('Overall Performance Across Shapes') 
+p1<-ggplot(perf_mat_total,aes(x=factor(cond),y=mean,fill=factor(cond))) +  
+  stat_summary(fun.y=mean,position=position_dodge(),geom="bar")+theme_bw()+coord_cartesian(ylim=c(0, 2)) 
+p1+geom_errorbar(aes(ymax=mean+sem, ymin=mean-sem), position="dodge")+ggtitle(title)+
+  scale_x_discrete(breaks = 1:length(perf_conds), labels=perf_conds)+
+  theme(panel.grid.major = element_blank(),legend.position="none", panel.grid.minor = element_blank(), axis.title.y=element_blank())+
+  theme(text = element_text(size=20), axis.text.x = element_text(angle = 45, hjust=1))+
+  xlab("Number of Selves")+ylab("Mean")
+
+#performance diff across agent conditions
+title <- c('Self vs. Other Performance Difference Across Shapes') 
+p2<-ggplot(perf_mat_diff,aes(x=factor(cond),y=mean,fill=factor(cond))) +  
+  stat_summary(fun.y=mean,position=position_dodge(),geom="bar")+theme_bw()+coord_cartesian(ylim=c(-1, 1)) 
+p2+geom_errorbar(aes(ymax=mean+sem, ymin=mean-sem), position="dodge")+ggtitle(title)+
+  scale_x_discrete(breaks = 1:length(perf_conds), labels=perf_conds)+
+  theme(panel.grid.major = element_blank(),legend.position="none", panel.grid.minor = element_blank(), axis.title.y=element_blank())+
+  theme(text = element_text(size=20), axis.text.x = element_text(angle = 45, hjust=1))+
+  xlab("Number of Selves")+ylab("Mean")
+
+grid.arrange(p1, p2)
+
+################# INDIVIDUAL PLOTS #########################################
+
+#performance total - self one
+p1<-ggplot(perf_one_total_ordered,aes(x=factor(counter),y=total_perf)) +  
+  stat_summary(fun.y=mean,position=position_dodge(),geom="bar",fill="darkgray")+
+  theme_bw()+coord_cartesian(ylim=c(1, 3))+
+  theme_classic()
+p1+scale_x_discrete(breaks = 1:dim(perf_one_total_ordered)[1], labels=perf_one_total_ordered$counter)+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(text = element_text(size=32), 
+        axis.text.x = element_text(angle = 45, hjust=1,vjust=0.8, color="black"),
+        axis.text.y = element_text(color="black"),
+        axis.title.x = element_text(face="bold"),
+        axis.title.y = element_text(face="bold"))+
+  xlab("Participant")+ylab("Performance Difference, First Two Conds")+
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)), axis.title.x = element_text(margin = margin(t = 20, r = 0, b = 0, l = 0)))+
+  scale_fill_manual(values = c("gray"))
+
+#performance total - self two
+p2<-ggplot(perf_two_total_ordered,aes(x=factor(counter),y=total_perf)) +  
+  stat_summary(fun.y=mean,position=position_dodge(),geom="bar",fill="darkgray")+
+  theme_bw()+coord_cartesian(ylim=c(1, 3))+
+  theme_classic()
+p2+scale_x_discrete(breaks = 1:dim(perf_two_total_ordered)[1], labels=perf_two_total_ordered$counter)+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(text = element_text(size=32), 
+        axis.text.x = element_text(angle = 45, hjust=1,vjust=0.8, color="black"),
+        axis.text.y = element_text(color="black"),
+        axis.title.x = element_text(face="bold"),
+        axis.title.y = element_text(face="bold"))+
+  xlab("Participant")+ylab("Performance Difference, First Two Conds")+
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)), axis.title.x = element_text(margin = margin(t = 20, r = 0, b = 0, l = 0)))+
+  scale_fill_manual(values = c("gray"))
+
+grid.arrange(p1, p2)
+
+#performance difference between self and other conditions - self one
+p1<-ggplot(perf_one_diff_ordered,aes(x=factor(counter),y=perf_diff)) +  
+  stat_summary(fun.y=mean,position=position_dodge(),geom="bar",fill="darkgray")+
+  theme_bw()+coord_cartesian(ylim=c(-1, 1))+
+  theme_classic()
+p1+scale_x_discrete(breaks = 1:dim(perf_one_diff_ordered)[1], labels=perf_one_diff_ordered$counter)+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(text = element_text(size=32), 
+        axis.text.x = element_text(angle = 45, hjust=1,vjust=0.8, color="black"),
+        axis.text.y = element_text(color="black"),
+        axis.title.x = element_text(face="bold"),
+        axis.title.y = element_text(face="bold"))+
+  xlab("Participant")+ylab("Performance Difference, First Two Conds")+
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)), axis.title.x = element_text(margin = margin(t = 20, r = 0, b = 0, l = 0)))+
+  scale_fill_manual(values = c("gray"))
+
+#performance difference between self and other conditions - self two
+p2<-ggplot(perf_two_diff_ordered,aes(x=factor(counter),y=perf_diff)) +  
+  stat_summary(fun.y=mean,position=position_dodge(),geom="bar",fill="darkgray")+
+  theme_bw()+coord_cartesian(ylim=c(-1, 1))+
+  theme_classic()
+p2+scale_x_discrete(breaks = 1:dim(perf_two_diff_ordered)[1], labels=perf_two_diff_ordered$counter)+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(text = element_text(size=32), 
+        axis.text.x = element_text(angle = 45, hjust=1,vjust=0.8, color="black"),
+        axis.text.y = element_text(color="black"),
+        axis.title.x = element_text(face="bold"),
+        axis.title.y = element_text(face="bold"))+
+  xlab("Participant")+ylab("Performance Difference, First Two Conds")+
+  theme(axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)), axis.title.x = element_text(margin = margin(t = 20, r = 0, b = 0, l = 0)))+
+  scale_fill_manual(values = c("gray"))
+
+grid.arrange(p1, p2)
+
+##================================================================================================================
+                                                        ##END##
+##================================================================================================================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
