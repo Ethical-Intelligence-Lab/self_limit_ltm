@@ -30,7 +30,8 @@ if (!require(ggsignif)) {install.packages("ggsignif"); require(ggsignif)}
 ##================================================================================================================
 
 ## set directory to data folder
-dir <- setwd("/Users/julian/Documents/github/juliandefreitas/self/memory_distinct_selves/e2_memory_youngOld/data")
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path)) #set working directory to current directory
+setwd("../data/")
 
 datalist = list()
 #import data using jsonlite [automate this, by defining list of data frames]
@@ -63,6 +64,7 @@ table(data$selfCond)[3]/30
 ### note, data$comp_mental_content actually refers to comp_number_copies
 
 ## (1) attention and comprehension
+length(unique(data$workerId)) #1 subjects
 data <- subset(data,(data$attentionMCQ=="0" & data$comp=="B")) 
 length(unique(data$workerId)) #1 subjects
 
@@ -121,15 +123,21 @@ trial_thresh <- 0.5
 ss_excl_mat <- array(0,dim=c(length(workers),2))
 colnames(ss_excl_mat) <- c('mean_acc', 'rt_err_prop')
 
+perf_excl <- 0
+trial_excl <- 0
 #if their accuracy < 55% or total bad RTs > 50% of trials, exclude them from dataset
 for(i in 1:length(workers)) {
   ss_excl_mat[i,1] <- c(mean(acc_use[worker==workers[i]])) #get accuracy for each worker
   ss_excl_mat[i,2] <- sum(data$badRt[data$workerId == workers[i]])/length(data$rt[data$workerId == workers[i]])
   if( (ss_excl_mat[i,1] < perf_thresh) | (ss_excl_mat[i,2] > trial_thresh) ) {
+    if (ss_excl_mat[i,1] < perf_thresh) { perf_excl <- perf_excl + 1 }
+    if (ss_excl_mat[i,2] > trial_thresh) { trial_excl <- trial_excl + 1 }
     data <- subset(data,data$workerId != workers[i]) 
   }
 }
-ss_excl_mat
+
+perf_excl
+trial_excl
 
 #check it worked
 worker <- as.factor(data$workerId)
@@ -350,7 +358,12 @@ sd(perf.mat$total_perf[perf.mat$mainCond == 3])
 perf_1 <- t.test(perf.mat$total_perf[perf.mat$mainCond == 1 | perf.mat$mainCond == 3] ~ perf.mat$mainCond[perf.mat$mainCond == 1 | perf.mat$mainCond == 3], var.equal=TRUE, paired=FALSE); perf_1
 perf_2 <- t.test(perf.mat$total_perf[perf.mat$mainCond == 2 | perf.mat$mainCond == 3] ~ perf.mat$mainCond[perf.mat$mainCond == 2 | perf.mat$mainCond == 3], var.equal=TRUE, paired=FALSE); perf_2
 
-#tes(as.numeric(perf_1[1]), length(workers), length(workers)) #cohen's d
+tes(as.numeric(perf_1[1]), length(workers), length(workers)) #cohen's d
+tes(as.numeric(perf_2[1]), length(workers), length(workers)) #cohen's d
+
+#***mean performance, for norming plot
+((mean(perf.mat$total_perf[perf.mat$mainCond == 3]) - mean(perf.mat$total_perf[perf.mat$mainCond == 1])) + (mean(perf.mat$total_perf[perf.mat$mainCond == 3]) - mean(perf.mat$total_perf[perf.mat$mainCond == 2])))/2 
+
 
 p_mat <- c(att_1_o[3], att_1_alt[3], att_1_b[3], perf_1[3], perf_2[3])
 for(i in 1:length(p_mat)) {

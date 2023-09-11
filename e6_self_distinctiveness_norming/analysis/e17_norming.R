@@ -20,10 +20,12 @@ library(ggrepel)
 
 ##================ import data ================================================================================================
 
-dir <- setwd("/Users/julian/Documents/github/juliandefreitas/serial_self/e17_self_distinctiveness_norming/data")
+## set directory to data folder
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path)) #set working directory to current directory
+setwd("../data/")
 
 files <- list.files(pattern=('*txt'))
-myJSON <- lapply(files, function(x) fromJSON(file=x)) #join into one single JSON file
+myJSON <- lapply(files, function(x) fromJSON(txt=x)) #join into one single JSON file
 (data <- lapply(myJSON, function(myJSON) { as.data.frame(myJSON) }))
 data <- (data <- do.call(rbind, data))
 
@@ -53,8 +55,7 @@ q6 <- as.numeric(data$trialStruct.q6_18young_60old)
 q7 <- as.numeric(data$trialStruct.q7_futures_2)
 q8 <- as.numeric(data$trialStruct.q8_healthy_unhealthy)
 
-similarities <- c(mean(q1, na.rm = TRUE),
-                  mean(q2), 
+similarities <- c(mean(q2), 
                   mean(q3),
                   mean(q4),
                   mean(q5),
@@ -62,8 +63,7 @@ similarities <- c(mean(q1, na.rm = TRUE),
                   mean(q7),
                   mean(q8))
 
-experiments <- c('original vs copy',
-                 'future-you1 vs future-you2',
+experiments <- c('future-you1 vs future-you2',
                  '20-years-younger vs 20-years-older',
                  'true vs surface',
                  '1-month-younger vs 1-month-older',
@@ -72,17 +72,15 @@ experiments <- c('original vs copy',
                  'healthy vs unhealthy')
 
 #performance differences two selves - one                 
-e8_duplicates <- 0.032946
-e9_alternatives <- -0.06146735
-e10_20yr_youngOld <- 0.2027015
-e11_true_surface <- 0.03563466
-e12_1m_youngOld <- 0.1216275
-e13_1860_youngOld <- 0.2879563
-e14_futures_2 <- -0.09078714
-e15_healthy_unhealthy <- 0.1069605
+e9_alternatives <- -0.06407179 ##
+e10_20yr_youngOld <- 0.1994021 ##
+e11_true_surface <- 0.0412656 ##
+e12_1m_youngOld <- 0.1162411 ##
+e13_1860_youngOld <- 0.2832143 ##
+e14_futures_2 <- -0.09078714 ##
+e15_healthy_unhealthy <- 0.1069605 ##
 
-effects <- c(e8_duplicates,
-             e9_alternatives,
+effects <- c(e9_alternatives,
              e10_20yr_youngOld,
              e11_true_surface,
              e12_1m_youngOld, 
@@ -97,7 +95,7 @@ cor.test(similarities, effects)
 plot(similarities, effects)
 abline(effects ~ similarities)
 
-df <- data.frame(matrix(ncol = 2, nrow = 8))
+df <- data.frame(matrix(ncol = 2, nrow = 7))
 colnames(df) <-  c("similarities", "effects")
 df$similarities <- similarities
 df$effects <- effects
