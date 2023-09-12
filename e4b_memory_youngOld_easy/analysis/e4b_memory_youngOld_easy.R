@@ -99,7 +99,7 @@ length(unique(data$workerId)) #1 subjects
 
 data$rt[is.na(data$rt)] <- 0
 
-## (2) < 55 accuracy or RTs < 100ms
+## (2) < 40 accuracy or RTs < 100ms
 #mark which trials had reasonable rts
 for(i in 1:dim(data)[1]) {
   if(data$rt[i] >= 100) {
@@ -124,7 +124,7 @@ colnames(ss_excl_mat) <- c('mean_acc', 'rt_err_prop')
 
 perf_excl <- 0
 trial_excl <- 0
-#if their accuracy < 55% or total bad RTs > 50% of trials, exclude them from dataset
+#if their accuracy < 40% or total bad RTs > 50% of trials, exclude them from dataset
 for(i in 1:length(workers)) {
   ss_excl_mat[i,1] <- c(mean(acc_use[worker==workers[i]])) #get accuracy for each worker
   ss_excl_mat[i,2] <- sum(data$badRt[data$workerId == workers[i]])/length(data$rt[data$workerId == workers[i]])
@@ -291,16 +291,6 @@ pref.mat[is.na(pref.mat)] <- 1
 ##ANALYSIS##
 ##================================================================================================================
 
-#---- HOW CORRELATED ARE LIKING RATINGS FOR SELF AND COPY 
-pref_easy <- pref.mat$pref[pref.mat$mainCond == 3]
-t.test(pref_easy, var.equal=TRUE, paired=FALSE)
-mean(pref_easy) #should be positively correlated
-sd(pref_easy)
-
-#compare easy to hard from e12
-easy_v_hard <- t.test(pref_hard, pref_easy, var.equal=TRUE, paired=FALSE); easy_v_hard
-tes(as.numeric(easy_v_hard[1]), length(pref_hard), length(pref_easy))
-
 #------- GROUP MEANS--------#
 p_mat <- rep(9, times = 5)
 star_mat <- rep(9, times = 5)
@@ -462,147 +452,119 @@ for(i in 1:length(unique(condNum))) {
 }
 perf_mat_plot
 
-##================================================================================================================
-##PLOT DATA##
+#=============================================================================================================
+##PLOT##
 ##================================================================================================================
 
 #identified with future1
 p1.11<-ggplot(d.one,aes(x=factor(cond),y=mean,fill=factor(cond))) +  
-  stat_summary(fun.y=mean,position=position_dodge(),geom="bar",face="bold")+
+  stat_summary(fun.y=mean,position=position_dodge(),geom="bar", face="bold")+
   coord_cartesian(ylim=c(0, 1))+
   theme(axis.title.y = element_blank()) + 
   theme(axis.title.x = element_blank()) + 
   theme(legend.title = element_blank())+
   theme(axis.ticks.x = element_blank())+
-  theme(axis.ticks.y = element_blank())+
   theme_classic()
 
-p1.111<-p1.11+scale_fill_discrete(name = "", labels = c ("Young\nYou", "Stranger\nJohn", "Stranger\nBill")) +
+p1.111<-p1.11+scale_fill_discrete(name = "", labels = c ("True\nYou", "Stranger\nJohn", "Stranger\nBill")) +
   xlab ("") + ylab ("") +
   theme(legend.text = element_text(size = "16", face = "plain")) +
-  geom_errorbar(aes(ymax=mean+sem, ymin=mean-sem), position="dodge")+
+  geom_errorbar(aes(ymax=mean+sem, ymin=mean-sem), position="dodge", size=1.5)+
   geom_signif(data=d.one,
-              aes(xmin=1, xmax=2, annotations=star_mat[1], y_position=0.75),
-              textsize = 8, vjust = 0.3,
-              manual=TRUE) +
-  ggtitle ("Self #1") +
+              aes(xmin=1, xmax=2, annotations=star_mat[1], y_position=0.8),
+              textsize = 12, vjust = 0.3,
+              manual=TRUE, size=1.5) +
+  #ggtitle ("Self #1") +
   theme(plot.title = element_text(hjust = 0.5)) + 
   theme(plot.title = element_text(size = 26))
 
-p1.1111<-p1.111+ theme(axis.text.x = element_blank())+
-  theme(axis.ticks.x = element_blank())+
-  theme(axis.text.y = element_text(size = 24))
-
+p1.1111<-p1.111+ theme(axis.text.x = element_blank()) +
+  theme(axis.ticks.x = element_blank()) +
+  theme(axis.line = element_line(colour = '#585858', size = 1.5), axis.text.y = element_blank(), axis.ticks.length=unit(.25, "cm"), axis.ticks = element_line(colour = "black", size = 1.5)) + scale_fill_manual(values=c("#802520", "#78a973", "#3e70bd"))
 
 #identified with future2
 p1.12<-ggplot(d.oneAlt,aes(x=factor(cond),y=mean,fill=factor(cond))) +  
-  stat_summary(fun.y=mean,position=position_dodge(),geom="bar",face="bold")+
+  stat_summary(fun.y=mean,position=position_dodge(),geom="bar", face="bold")+
   coord_cartesian(ylim=c(0, 1))+
   theme(axis.title.y = element_blank()) + 
   theme(axis.title.x = element_blank()) + 
-  theme(legend.title = element_blank())+
-  theme(axis.ticks.x = element_blank())+
-  theme(axis.ticks.y = element_blank())+
+  theme(legend.title = element_blank()) +
+  theme(axis.ticks.x = element_blank()) +
   theme_classic()
 
-p1.112<-p1.12+scale_fill_discrete(name = "", labels = c ("Old\nYou", "Stranger\nJohn", "Stranger\nBill")) +
+p1.112<-p1.12+scale_fill_discrete(name = "", labels = c ("Surface\nYou", "Stranger\nJohn", "Stranger\nBill")) +
   xlab ("") + ylab ("") +
   theme(legend.text = element_text(size = "16", face = "plain")) +
-  geom_errorbar(aes(ymax=mean+sem, ymin=mean-sem), position="dodge")+
+  geom_errorbar(aes(ymax=mean+sem, ymin=mean-sem), position="dodge", size=1.5)+
   geom_signif(data=d.one,
-              aes(xmin=1, xmax=2, annotations=star_mat[2], y_position=0.75),
-              textsize = 8, vjust = 0.3,
-              manual=TRUE) +
-  ggtitle ("Self #2") +
+              aes(xmin=1, xmax=2, annotations=star_mat[2], y_position=0.8),
+              textsize = 12, vjust = 0.3,
+              manual=TRUE, size=1.5) +
+  #ggtitle ("Self #2") +
   theme(plot.title = element_text(hjust = 0.5)) + 
   theme(plot.title = element_text(size = 26))
 
 p1.1112<-p1.112+ theme(axis.text.x = element_blank())+
-  theme(axis.ticks.x = element_blank())+
-  theme(axis.text.y = element_blank())+
-  theme(axis.ticks.y = element_blank())
+  theme(axis.ticks.x = element_blank()) +
+  theme(axis.line = element_line(colour = '#585858', size = 1.5), axis.text.y = element_blank(), axis.ticks.length=unit(.25, "cm"), axis.ticks = element_line(colour = "black", size = 1.5)) + scale_fill_manual(values=c("#d95b5f", "#78a973", "#3e70bd"))
 
-
-#identified with both
 p1.14<-ggplot(d.two,aes(x=factor(cond),y=mean,fill=factor(cond))) +  
   stat_summary(fun.y=mean,position=position_dodge(),geom="bar",face="bold")+
   coord_cartesian(ylim=c(0, 1))+
   theme(axis.title.y = element_blank()) + 
   theme(axis.title.x = element_blank()) + 
-  theme(legend.title = element_blank())+
-  theme(axis.ticks.x = element_blank())+
-  theme(axis.ticks.y = element_blank())+
+  theme(legend.title = element_blank()) +
+  theme(axis.ticks.x = element_blank()) +
   theme_classic()
-p1.114<-p1.14+scale_fill_discrete(name = "", labels = c ("Young\nYou", "Old\nYou", "Stranger\nJohn")) +
+
+p1.114<-p1.14+scale_fill_discrete(name = "", labels = c ("True\nYou", "Surface\nYou", "Stranger\nJohn")) +
   xlab ("") + ylab ("") +
   theme(legend.text = element_text(size = "16", face = "plain")) +
-  geom_errorbar(aes(ymax=mean+sem, ymin=mean-sem), position="dodge")+
+  geom_errorbar(aes(ymax=mean+sem, ymin=mean-sem), position="dodge", size=1.5)+
   geom_signif(data=d.two,
-              aes(xmin=1, xmax=2, annotations=star_mat[3], y_position=0.75),
-              textsize = 6, vjust = -0.4,
-              manual=TRUE) +
-  ggtitle ("Two Selves") +
+              aes(xmin=1, xmax=2, annotations=star_mat[3], y_position=0.8),
+              textsize = 12, vjust = -0.1,
+              manual=TRUE, size=1.5) +
+  #ggtitle ("Two Selves") +
   theme(plot.title = element_text(hjust = 0.5)) + 
   theme(plot.title = element_text(size = 26))
+
 p1.1114<-p1.114+theme(axis.text.x = element_blank())+
   theme(axis.ticks.x = element_blank())+
-  theme(axis.text.y = element_blank())+
-  theme(axis.ticks.y = element_blank())
+  theme(axis.line = element_line(colour = '#585858', size = 1.5), axis.text.y = element_blank(), axis.ticks.length=unit(.25, "cm"), axis.ticks = element_line(colour = "black", size = 1.5)) + scale_fill_manual(values=c("#802520", "#d95b5f", "#78a973"))
 
 #total performance
 p1.15<-ggplot(perf_mat_plot,aes(x=factor(cond),y=mean)) +  
   stat_summary(fun.y=mean,position=position_dodge(),geom="bar",face="bold")+
-  coord_cartesian(ylim=c(0, 3))+
+  coord_cartesian(ylim=c(0, 4))+
   theme(axis.title.y = element_blank()) + 
   theme(axis.title.x = element_blank()) + 
   theme(legend.title = element_blank())+
-  theme(axis.ticks.x = element_blank())+
-  theme(axis.ticks.y = element_blank())+
+  theme(axis.ticks.x = element_blank(), margin = margin(t = 3))+
   theme_classic()
 
 p1.115<-p1.15+scale_fill_discrete(name = "", labels = c ("Original", "Copy", "Stranger")) +
   xlab ("") + ylab ("") +
-  geom_errorbar(aes(ymax=mean+sem, ymin=mean-sem), position="dodge")+
+  geom_errorbar(aes(ymax=mean+sem, ymin=mean-sem), position="dodge", size=1.5)+
   geom_signif(data=perf_mat_plot,
-              aes(xmin=1, xmax=3, annotations=star_mat[4], y_position=2.4),
-              textsize = 8, vjust = 0.3,
-              manual=TRUE) +
+              aes(xmin=1, xmax=3, annotations=star_mat[4], y_position=3.0),
+              textsize = 12, vjust = 0.3,
+              manual=TRUE, size=1.5) +
   geom_signif(data=perf_mat_plot,
-              aes(xmin=2, xmax=3, annotations=star_mat[5], y_position=2.0),
-              textsize = 8, vjust = 0.3,
-              manual=TRUE) +
-  ggtitle ("Total Performance:\n One Self v. Two Selves") +
+              aes(xmin=2, xmax=3, annotations=star_mat[5], y_position=2.1),
+              textsize = 12, vjust = 0.3,
+              manual=TRUE, size=1.5) +
+  #ggtitle ("Total Performance:\n One Self v. Two Selves") +
   theme(plot.title = element_text(hjust = 0.5)) + 
   theme(plot.title = element_text(size = 22))+
-  theme(axis.text.y = element_text(size = 24))
+  theme(axis.text.y = element_text(size = 26))
 
 p1.1115<-p1.115+ theme(axis.text.x = element_blank())+
-  theme(axis.ticks.x = element_blank())
+  theme(axis.line = element_line(colour = '#585858', size = 1.5), axis.ticks.x = element_blank(), axis.ticks.length=unit(.25, "cm"), axis.ticks = element_line(colour = "black", size = 1.5))
 
-quartz()
-figure<-ggarrange(p1.1111,p1.1112, p1.1114,p1.1115, nrow=1,ncol=4,common.legend = FALSE, legend="top", vjust = -1.0) 
-annotate_figure(figure,top = text_grob("Experiment 4b: Distinct Past and Future Selves", face = "bold", size = 27),
-                left = text_grob("Accuracy", color="black", face ="plain",size=27, rot=90)) 
-##================================================================================================================
-##END##
-##================================================================================================================
+figure <- ggarrange(p1.1111, p1.1112, p1.1114, p1.1115, nrow=1,ncol=4,common.legend = FALSE, legend="none", vjust = -1.0)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+png("../fig1.png", width = 8640 * 2.5/6, height = 2560 * 2.5/6, res=300)
+figure
+dev.off()
 
